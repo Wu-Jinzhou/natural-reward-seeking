@@ -1,0 +1,7 @@
+Running initial prompt eval with output dir: /workspace/natural-reward-seeking/results/initial_prompt_eval
+INFO 04-18 19:08:17 [utils.py:233] non-default args: {'tokenizer': 'allenai/Olmo-3-7B-Think-SFT', 'dtype': 'bfloat16', 'max_num_seqs': 8, 'disable_log_stats': True, 'model': 'allenai/Olmo-3-7B-Think-SFT'}
+INFO 04-18 19:08:18 [model.py:549] Resolved architecture: Olmo3ForCausalLM
+INFO 04-18 19:08:18 [model.py:1678] Using max model len 65536
+INFO 04-18 19:08:18 [scheduler.py:238] Chunked prefill is enabled with max_num_batched_tokens=16384.
+INFO 04-18 19:08:18 [vllm.py:790] Asynchronous scheduling is enabled.
+The following generation flags are not valid and may be ignored: ['temperature', 'top_p']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
