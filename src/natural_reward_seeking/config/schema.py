@@ -27,6 +27,7 @@ class DatasetConfig:
 @dataclass
 class ModelConfig:
     policy_model_id: str
+    policy_backend: str
     reward_model_id: str
     trust_remote_code: bool
     attn_implementation: str
@@ -78,6 +79,7 @@ def load_initial_eval_config(config_path: str | Path | None = None) -> InitialEv
         ),
         models=ModelConfig(
             policy_model_id=str(raw["models"]["policy_model_id"]),
+            policy_backend=str(raw["models"].get("policy_backend", "transformers")),
             reward_model_id=str(raw["models"]["reward_model_id"]),
             trust_remote_code=bool(raw["models"]["trust_remote_code"]),
             attn_implementation=str(raw["models"]["attn_implementation"]),
@@ -97,4 +99,3 @@ def load_initial_eval_config(config_path: str | Path | None = None) -> InitialEv
             directory=_resolve_repo_path(raw["output"]["dir"]),
         ),
     )
-

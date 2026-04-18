@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import gc
 import inspect
-from pathlib import Path
 import re
 from typing import Any, Sequence
 
@@ -143,6 +142,7 @@ class PolicyGenerator:
         self,
         *,
         model_id: str,
+        backend: str = "transformers",
         batch_size: int,
         max_new_tokens: int,
         enable_thinking: bool,
@@ -150,6 +150,7 @@ class PolicyGenerator:
         trust_remote_code: bool,
     ) -> None:
         self.model_id = model_id
+        self.backend = backend
         self.batch_size = batch_size
         self.max_new_tokens = max_new_tokens
         self.enable_thinking = enable_thinking
@@ -169,6 +170,25 @@ class PolicyGenerator:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token or self.tokenizer.unk_token
         self.tokenizer.padding_side = "left"
+
+        if self.backend == "vllm":
+            if not torch.cuda.is_available():
+                raise RuntimeError("The vLLM policy backend requires CUDA.")
+            try:
+                from vllm import LLM
+            except ImportError as exc:
+                raise RuntimeError(
+                    "vLLM is not installed. Install it or set --policy-backend transformers."
+                ) from exc
+            llm_kwargs: dict[str, Any] = {
+                "model": self.model_id,
+                "tokenizer": self.model_id,
+                "trust_remote_code": self.trust_remote_code,
+                "dtype": "bfloat16",
+                "max_num_seqs": self.batch_size,
+            }
+            self.model = LLM(**llm_kwargs)
+            return self.tokenizer, self.model
 
         kwargs: dict[str, Any] = {
             "pretrained_model_name_or_path": self.model_id,
@@ -200,7 +220,6 @@ class PolicyGenerator:
     ) -> list[dict[str, Any]]:
         tokenizer, model = self.load()
         stop_ids = get_stop_token_ids(tokenizer)
-        model_device = next(model.parameters()).device
         rendered_prompts = []
         for row in case_rows:
             messages = build_messages(row["prompt_text"], row["system_prompt"])
@@ -217,6 +236,53 @@ class PolicyGenerator:
         sorted_case_rows = [case_rows[idx] for idx in sorted_indices]
         sorted_prompts = [rendered_prompts[idx] for idx in sorted_indices]
         results_by_index: list[dict[str, Any] | None] = [None] * len(case_rows)
+
+        if self.backend == "vllm":
+            try:
+                from vllm import SamplingParams
+            except ImportError as exc:
+                raise RuntimeError(
+                    "vLLM is not installed. Install it or set --policy-backend transformers."
+                ) from exc
+            sampling_params = SamplingParams(
+                n=1,
+                temperature=0.0,
+                top_p=1.0,
+                max_tokens=self.max_new_tokens,
+                stop_token_ids=(stop_ids or None),
+            )
+            outputs = model.generate(
+                sorted_prompts,
+                sampling_params,
+                use_tqdm=show_progress,
+            )
+            for row, original_index, request_output in zip(sorted_case_rows, sorted_indices, outputs, strict=True):
+                candidate = request_output.outputs[0] if getattr(request_output, "outputs", None) else None
+                token_ids = list(getattr(candidate, "token_ids", []) or [])
+                removed_terminal_tokens = 0
+                if token_ids:
+                    trimmed_ids, removed_terminal_tokens = trim_trailing_stop_ids(token_ids, stop_ids)
+                    decoded = tokenizer.decode(trimmed_ids, skip_special_tokens=False)
+                    num_tokens_generated = len(trimmed_ids)
+                else:
+                    decoded = getattr(candidate, "text", "") if candidate is not None else ""
+                    num_tokens_generated = len(token_ids)
+                parsed = parse_generated_output(decoded)
+                enriched = dict(row)
+                enriched.update(parsed)
+                enriched.update(
+                    {
+                        "has_reasoning_trace": parsed["has_reasoning_trace"],
+                        "reasoning_char_count": len(parsed["reasoning_trace"]),
+                        "answer_char_count": len(parsed["answer"]),
+                        "num_tokens_generated": num_tokens_generated,
+                        "removed_terminal_tokens": removed_terminal_tokens,
+                    }
+                )
+                results_by_index[original_index] = enriched
+            return [row for row in results_by_index if row is not None]
+
+        model_device = next(model.parameters()).device
 
         batch_starts = range(0, len(sorted_case_rows), self.batch_size)
         if show_progress:

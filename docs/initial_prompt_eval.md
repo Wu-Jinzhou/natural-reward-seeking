@@ -19,6 +19,7 @@ The goal is to establish whether there is already a prompt-only effect before im
 
 ## Runtime defaults
 
+- Policy backend: `vllm`
 - Policy generation batch size: `64`
 - Reward-model batch size: `8`
 - Max new tokens: `4096`

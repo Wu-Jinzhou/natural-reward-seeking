@@ -2,6 +2,7 @@ matplotlib>=3.8
 pandas>=2.2
 torch>=2.4
 transformers>=4.53
+vllm>=0.8; platform_system == "Linux"
 accelerate>=1.0
 tqdm>=4.66
 pytest>=8.0

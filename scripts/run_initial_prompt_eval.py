@@ -31,6 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sample-per-category", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--policy-model-id", default=None)
+    parser.add_argument("--policy-backend", default=None)
     parser.add_argument("--reward-model-id", default=None)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--reward-batch-size", type=int, default=None)
@@ -55,6 +56,8 @@ def apply_overrides(config, args: argparse.Namespace):
         config.dataset.seed = int(args.seed)
     if args.policy_model_id is not None:
         config.models.policy_model_id = str(args.policy_model_id)
+    if args.policy_backend is not None:
+        config.models.policy_backend = str(args.policy_backend)
     if args.reward_model_id is not None:
         config.models.reward_model_id = str(args.reward_model_id)
     if args.batch_size is not None:
@@ -143,6 +146,7 @@ def main() -> None:
 
     generator = PolicyGenerator(
         model_id=config.models.policy_model_id,
+        backend=config.models.policy_backend,
         batch_size=config.generation.batch_size,
         max_new_tokens=config.generation.max_new_tokens,
         enable_thinking=config.generation.enable_thinking,
