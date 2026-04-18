@@ -12,7 +12,7 @@ The goal is to establish whether there is already a prompt-only effect before im
 
 - Source: `wildjailbreak/train/train.tsv`
 - Sampling: balanced by `data_type`, `500` prompts per category by default
-- Default policy inference batch size: `64`
+- Default Transformers policy batch size: `64`
 - Prompt extraction:
   - `vanilla_*` rows use the `vanilla` column
   - `adversarial_*` rows use the `adversarial` column
@@ -20,7 +20,7 @@ The goal is to establish whether there is already a prompt-only effect before im
 ## Runtime defaults
 
 - Policy backend: `vllm`
-- Policy generation batch size: `64`
+- Transformers policy batch size: `64` (`vllm` manages its own request scheduling)
 - Reward-model batch size: `8`
 - Max new tokens: `4096`
 

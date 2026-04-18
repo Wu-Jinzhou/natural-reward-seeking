@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -37,6 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--reward-batch-size", type=int, default=None)
     parser.add_argument("--max-new-tokens", type=int, default=None)
+    parser.add_argument("--stages", default="generation,scoring")
     parser.add_argument("--attn-implementation", default=None)
     parser.add_argument("--trust-remote-code", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--enable-thinking", action=argparse.BooleanOptionalAction, default=None)
@@ -96,9 +98,33 @@ def build_case_rows(sampled_rows: list[dict], *, conditions) -> list[dict]:
     return cases
 
 
+def parse_stages(raw: str) -> list[str]:
+    stages = [stage.strip().lower() for stage in raw.split(",") if stage.strip()]
+    valid = {"generation", "scoring"}
+    invalid = [stage for stage in stages if stage not in valid]
+    if invalid:
+        raise ValueError(f"Unsupported stages: {', '.join(invalid)}")
+    if not stages:
+        raise ValueError("At least one stage must be selected.")
+    return stages
+
+
+def read_jsonl_rows(path: Path) -> list[dict]:
+    if not path.exists():
+        raise FileNotFoundError(f"Required file not found: {path}")
+    rows: list[dict] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if line:
+                rows.append(json.loads(line))
+    return rows
+
+
 def main() -> None:
     args = parse_args()
     config = apply_overrides(load_initial_eval_config(args.config), args)
+    stages = parse_stages(args.stages)
     if config.models.policy_backend == "vllm":
         os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
     output_dir = config.output.directory
@@ -108,65 +134,81 @@ def main() -> None:
 
     write_json(output_dir / "run_config.json", config.to_dict())
 
-    dataset_rows = load_wildjailbreak_train_rows(config.dataset.root)
-    sampled_rows, manifest = sample_rows_by_category(
-        dataset_rows,
-        sample_per_category=config.dataset.sample_per_category,
-        seed=config.dataset.seed,
-    )
-    manifest.update(
-        {
-            "dataset_root": str(config.dataset.root),
-            "num_prompt_conditions": len(PROMPT_CONDITIONS),
-            "num_total_cases": len(sampled_rows) * len(PROMPT_CONDITIONS),
-        }
-    )
-    write_json(output_dir / "sample_manifest.json", manifest)
-    save_rows_csv(output_dir / "sample_manifest.csv", manifest["manifest_rows"])
+    response_rows: list[dict]
+    target_completion_rows: list[dict]
 
-    target_reward_messages = []
-    target_completion_rows = []
-    for row in sampled_rows:
-        target_text = str(row.get("target_completion", "")).strip()
-        target_completion_rows.append(
+    if "generation" in stages:
+        dataset_rows = load_wildjailbreak_train_rows(config.dataset.root)
+        sampled_rows, manifest = sample_rows_by_category(
+            dataset_rows,
+            sample_per_category=config.dataset.sample_per_category,
+            seed=config.dataset.seed,
+        )
+        manifest.update(
             {
-                "prompt_id": row["prompt_id"],
-                "source_index": row["source_index"],
-                "data_type": row["data_type"],
-                "prompt_field": row["prompt_field"],
-                "prompt_text": row["prompt_text"],
-                "target_completion": target_text,
+                "dataset_root": str(config.dataset.root),
+                "num_prompt_conditions": len(PROMPT_CONDITIONS),
+                "num_total_cases": len(sampled_rows) * len(PROMPT_CONDITIONS),
             }
         )
-        target_reward_messages.append(
-            [
-                {"role": "user", "content": row["prompt_text"]},
-                {"role": "assistant", "content": target_text},
-            ]
+        write_json(output_dir / "sample_manifest.json", manifest)
+        save_rows_csv(output_dir / "sample_manifest.csv", manifest["manifest_rows"])
+
+        target_completion_rows = []
+        for row in sampled_rows:
+            target_completion_rows.append(
+                {
+                    "prompt_id": row["prompt_id"],
+                    "source_index": row["source_index"],
+                    "data_type": row["data_type"],
+                    "prompt_field": row["prompt_field"],
+                    "prompt_text": row["prompt_text"],
+                    "target_completion": str(row.get("target_completion", "")).strip(),
+                }
+            )
+        write_jsonl(output_dir / "target_completion_inputs.jsonl", target_completion_rows)
+        save_rows_csv(output_dir / "target_completion_inputs.csv", target_completion_rows)
+
+        case_rows = build_case_rows(sampled_rows, conditions=PROMPT_CONDITIONS)
+
+        generator = PolicyGenerator(
+            model_id=config.models.policy_model_id,
+            backend=config.models.policy_backend,
+            batch_size=config.generation.batch_size,
+            max_new_tokens=config.generation.max_new_tokens,
+            enable_thinking=config.generation.enable_thinking,
+            attn_implementation=config.models.attn_implementation,
+            trust_remote_code=config.models.trust_remote_code,
         )
+        response_rows = generator.generate_case_rows(
+            case_rows,
+            progress_desc="Generating policy responses",
+        )
+        generator.release()
 
-    case_rows = build_case_rows(sampled_rows, conditions=PROMPT_CONDITIONS)
+        write_jsonl(output_dir / "responses_pre_reward.jsonl", response_rows)
+        save_rows_csv(output_dir / "responses_pre_reward.csv", response_rows)
+        write_jsonl(output_dir / "responses.jsonl", response_rows)
+        save_rows_csv(output_dir / "responses.csv", response_rows)
+    else:
+        response_rows = read_jsonl_rows(output_dir / "responses_pre_reward.jsonl")
+        target_completion_rows = read_jsonl_rows(output_dir / "target_completion_inputs.jsonl")
 
-    generator = PolicyGenerator(
-        model_id=config.models.policy_model_id,
-        backend=config.models.policy_backend,
-        batch_size=config.generation.batch_size,
-        max_new_tokens=config.generation.max_new_tokens,
-        enable_thinking=config.generation.enable_thinking,
-        attn_implementation=config.models.attn_implementation,
-        trust_remote_code=config.models.trust_remote_code,
-    )
-    response_rows = generator.generate_case_rows(
-        case_rows,
-        progress_desc="Generating policy responses",
-    )
-    generator.release()
+    if "scoring" not in stages:
+        return
 
     reward_scorer = SkyworkRewardScorer(
         model_id=config.models.reward_model_id,
         trust_remote_code=config.models.trust_remote_code,
-        attn_implementation=config.models.attn_implementation,
+        attn_implementation="sdpa",
     )
+    target_reward_messages = [
+        [
+            {"role": "user", "content": row["prompt_text"]},
+            {"role": "assistant", "content": row["target_completion"]},
+        ]
+        for row in target_completion_rows
+    ]
     target_reward_scores = reward_scorer.score_messages(
         target_reward_messages,
         batch_size=config.generation.reward_batch_size,
@@ -197,8 +239,6 @@ def main() -> None:
         row.update(keyword_metrics)
     reward_scorer.release()
 
-    write_jsonl(output_dir / "responses.jsonl", response_rows)
-    save_rows_csv(output_dir / "responses.csv", response_rows)
     write_jsonl(output_dir / "target_completion_scores.jsonl", target_completion_rows)
     save_rows_csv(output_dir / "target_completion_scores.csv", target_completion_rows)
 

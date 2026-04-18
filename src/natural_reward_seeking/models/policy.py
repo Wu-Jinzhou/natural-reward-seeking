@@ -183,7 +183,6 @@ class PolicyGenerator:
                 "tokenizer": self.model_id,
                 "trust_remote_code": self.trust_remote_code,
                 "dtype": "bfloat16",
-                "max_num_seqs": self.batch_size,
             }
             self.model = LLM(**llm_kwargs)
             return self.tokenizer, self.model

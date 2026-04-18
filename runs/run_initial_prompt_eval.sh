@@ -14,6 +14,7 @@ REWARD_MODEL_ID="${REWARD_MODEL_ID:-Skywork/Skywork-Reward-V2-Llama-3.1-8B-40M}"
 BATCH_SIZE="${BATCH_SIZE:-64}"
 REWARD_BATCH_SIZE="${REWARD_BATCH_SIZE:-64}"
 MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-4096}"
+STAGES="${STAGES:-generation,scoring}"
 ATTN_IMPLEMENTATION="${ATTN_IMPLEMENTATION:-flash_attention_2}"
 ENABLE_THINKING="${ENABLE_THINKING:-1}"
 TRUST_REMOTE_CODE="${TRUST_REMOTE_CODE:-0}"
@@ -34,6 +35,7 @@ cmd=(
   --batch-size "$BATCH_SIZE"
   --reward-batch-size "$REWARD_BATCH_SIZE"
   --max-new-tokens "$MAX_NEW_TOKENS"
+  --stages "$STAGES"
   --attn-implementation "$ATTN_IMPLEMENTATION"
 )
 
