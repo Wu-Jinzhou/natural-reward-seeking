@@ -172,8 +172,6 @@ class PolicyGenerator:
         self.tokenizer.padding_side = "left"
 
         if self.backend == "vllm":
-            if not torch.cuda.is_available():
-                raise RuntimeError("The vLLM policy backend requires CUDA.")
             try:
                 from vllm import LLM
             except ImportError as exc:

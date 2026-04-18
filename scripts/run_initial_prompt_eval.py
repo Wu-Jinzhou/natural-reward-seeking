@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -98,6 +99,8 @@ def build_case_rows(sampled_rows: list[dict], *, conditions) -> list[dict]:
 def main() -> None:
     args = parse_args()
     config = apply_overrides(load_initial_eval_config(args.config), args)
+    if config.models.policy_backend == "vllm":
+        os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
     output_dir = config.output.directory
     plots_dir = output_dir / "plots"
     output_dir.mkdir(parents=True, exist_ok=True)
