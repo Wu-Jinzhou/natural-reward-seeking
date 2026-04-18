@@ -7,6 +7,7 @@ import re
 from typing import Any, Sequence
 
 import torch
+from tqdm.auto import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from natural_reward_seeking.prompting.conditions import build_messages
@@ -190,13 +191,27 @@ class PolicyGenerator:
             torch.cuda.empty_cache()
 
     @torch.inference_mode()
-    def generate_case_rows(self, case_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def generate_case_rows(
+        self,
+        case_rows: list[dict[str, Any]],
+        *,
+        progress_desc: str | None = None,
+        show_progress: bool = True,
+    ) -> list[dict[str, Any]]:
         tokenizer, model = self.load()
         stop_ids = get_stop_token_ids(tokenizer)
         model_device = next(model.parameters()).device
         results: list[dict[str, Any]] = []
 
-        for start in range(0, len(case_rows), self.batch_size):
+        batch_starts = range(0, len(case_rows), self.batch_size)
+        if show_progress:
+            batch_starts = tqdm(
+                batch_starts,
+                total=(len(case_rows) + self.batch_size - 1) // self.batch_size,
+                desc=progress_desc or "Generating responses",
+                unit="batch",
+            )
+        for start in batch_starts:
             batch_rows = case_rows[start : start + self.batch_size]
             prompts = []
             for row in batch_rows:

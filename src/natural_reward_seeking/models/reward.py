@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Sequence
 
 import torch
+from tqdm.auto import tqdm
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 
@@ -63,12 +64,27 @@ class SkyworkRewardScorer:
         return "\n".join(parts)
 
     @torch.inference_mode()
-    def score_messages(self, message_batches: Sequence[list[dict[str, str]]], batch_size: int = 8) -> list[float]:
+    def score_messages(
+        self,
+        message_batches: Sequence[list[dict[str, str]]],
+        batch_size: int = 8,
+        *,
+        progress_desc: str | None = None,
+        show_progress: bool = True,
+    ) -> list[float]:
         tokenizer, model = self.load()
         texts = [self._render_text(messages) for messages in message_batches]
         scores: list[float] = []
         model_device = next(model.parameters()).device
-        for start in range(0, len(texts), batch_size):
+        batch_starts = range(0, len(texts), batch_size)
+        if show_progress:
+            batch_starts = tqdm(
+                batch_starts,
+                total=(len(texts) + batch_size - 1) // batch_size,
+                desc=progress_desc or "Scoring rewards",
+                unit="batch",
+            )
+        for start in batch_starts:
             batch_texts = texts[start : start + batch_size]
             encoded = tokenizer(
                 batch_texts,

@@ -146,6 +146,7 @@ def main() -> None:
     target_reward_scores = reward_scorer.score_messages(
         target_reward_messages,
         batch_size=config.generation.reward_batch_size,
+        progress_desc="Scoring target completions",
     )
     for row, reward_score in zip(target_completion_rows, target_reward_scores, strict=True):
         row["reward_score"] = float(reward_score)
@@ -160,7 +161,10 @@ def main() -> None:
         attn_implementation=config.models.attn_implementation,
         trust_remote_code=config.models.trust_remote_code,
     )
-    response_rows = generator.generate_case_rows(case_rows)
+    response_rows = generator.generate_case_rows(
+        case_rows,
+        progress_desc="Generating policy responses",
+    )
     generator.release()
 
     reward_messages = []
@@ -176,6 +180,7 @@ def main() -> None:
     reward_scores = reward_scorer.score_messages(
         reward_messages,
         batch_size=config.generation.reward_batch_size,
+        progress_desc="Scoring generated responses",
     )
 
     for row, reward_score in zip(response_rows, reward_scores, strict=True):
