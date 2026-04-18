@@ -76,6 +76,7 @@ The evaluation also scores the WildJailbreak target completion for each sampled 
 Install:
 
 ```bash
+pip install -r requirements.txt
 pip install -e .[dev]
 ```
 
