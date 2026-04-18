@@ -12,7 +12,7 @@ attn_implementation = "flash_attention_2"
 [generation]
 batch_size = 64
 reward_batch_size = 8
-max_new_tokens = 512
+max_new_tokens = 4096
 enable_thinking = true
 
 [analysis]

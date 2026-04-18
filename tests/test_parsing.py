@@ -13,3 +13,9 @@ def test_parse_generated_output_falls_back_to_raw_text() -> None:
     assert parsed["has_reasoning_trace"] is False
     assert parsed["answer"] == "No explicit think tags here."
 
+
+def test_parse_generated_output_handles_missing_open_think_tag() -> None:
+    parsed = parse_generated_output("Reasoning without opener.</think>Final answer.")
+    assert parsed["has_reasoning_trace"] is True
+    assert parsed["reasoning_trace"] == "Reasoning without opener."
+    assert parsed["answer"] == "Final answer."

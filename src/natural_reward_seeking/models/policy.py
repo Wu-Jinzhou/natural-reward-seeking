@@ -12,7 +12,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from natural_reward_seeking.prompting.conditions import build_messages
 
 
-TERMINAL_MARKER_SUFFIX_RE = re.compile(r"(?:\s*(?:<\|im_end\|>|<\|im_start\|>|<\|endoftext\|>))+\s*$")
+TERMINAL_MARKER_SUFFIX_RE = re.compile(r"(?:\s*(?:<\|im_end\|>|<\|im_start\|>|<\|endoftext\|>|<\|pad\|>))+\s*$")
 EMPTY_THINK_RE = re.compile(r"<think>\s*</think>\s*", flags=re.DOTALL)
 
 
@@ -114,6 +114,14 @@ def split_think_tags(text: str) -> tuple[str, str]:
     if open_idx != -1 and close_idx != -1 and open_idx < close_idx:
         reasoning = text[open_idx + len(open_tag) : close_idx].strip()
         answer = (text[:open_idx] + text[close_idx + len(close_tag) :]).strip()
+        return reasoning, answer
+    if open_idx == -1 and close_idx != -1:
+        reasoning = text[:close_idx].strip()
+        answer = text[close_idx + len(close_tag) :].strip()
+        return reasoning, answer
+    if open_idx != -1 and close_idx == -1:
+        reasoning = text[open_idx + len(open_tag) :].strip()
+        answer = text[:open_idx].strip()
         return reasoning, answer
     return "", text.strip()
 
