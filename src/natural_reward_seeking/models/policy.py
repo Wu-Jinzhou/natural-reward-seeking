@@ -164,7 +164,7 @@ class PolicyGenerator:
         kwargs: dict[str, Any] = {
             "pretrained_model_name_or_path": self.model_id,
             "trust_remote_code": self.trust_remote_code,
-            "torch_dtype": torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+            "dtype": torch.bfloat16 if torch.cuda.is_available() else torch.float32,
         }
         if torch.cuda.is_available():
             kwargs["device_map"] = "auto"
@@ -235,4 +235,3 @@ class PolicyGenerator:
                 )
                 results.append(enriched)
         return results
-

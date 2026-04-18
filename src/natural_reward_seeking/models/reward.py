@@ -36,7 +36,7 @@ class SkyworkRewardScorer:
         kwargs: dict[str, Any] = {
             "pretrained_model_name_or_path": self.model_id,
             "trust_remote_code": self.trust_remote_code,
-            "torch_dtype": torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+            "dtype": torch.bfloat16 if torch.cuda.is_available() else torch.float32,
         }
         if torch.cuda.is_available():
             kwargs["device_map"] = "auto"
@@ -84,4 +84,3 @@ class SkyworkRewardScorer:
                 raise RuntimeError("Reward model did not return logits.")
             scores.extend(float(score) for score in logits[:, 0].detach().float().cpu().tolist())
         return scores
-
