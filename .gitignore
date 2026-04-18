@@ -9,9 +9,8 @@ __pycache__/
 .env
 .venv/
 venv/
-artifacts/
-results/
 wildjailbreak/
 build/
 dist/
 *.egg-info/
+.ipynb_checkpoints/
