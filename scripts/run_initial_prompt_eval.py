@@ -118,11 +118,6 @@ def main() -> None:
     write_json(output_dir / "sample_manifest.json", manifest)
     save_rows_csv(output_dir / "sample_manifest.csv", manifest["manifest_rows"])
 
-    reward_scorer = SkyworkRewardScorer(
-        model_id=config.models.reward_model_id,
-        trust_remote_code=config.models.trust_remote_code,
-        attn_implementation=config.models.attn_implementation,
-    )
     target_reward_messages = []
     target_completion_rows = []
     for row in sampled_rows:
@@ -143,13 +138,6 @@ def main() -> None:
                 {"role": "assistant", "content": target_text},
             ]
         )
-    target_reward_scores = reward_scorer.score_messages(
-        target_reward_messages,
-        batch_size=config.generation.reward_batch_size,
-        progress_desc="Scoring target completions",
-    )
-    for row, reward_score in zip(target_completion_rows, target_reward_scores, strict=True):
-        row["reward_score"] = float(reward_score)
 
     case_rows = build_case_rows(sampled_rows, conditions=PROMPT_CONDITIONS)
 
@@ -166,6 +154,19 @@ def main() -> None:
         progress_desc="Generating policy responses",
     )
     generator.release()
+
+    reward_scorer = SkyworkRewardScorer(
+        model_id=config.models.reward_model_id,
+        trust_remote_code=config.models.trust_remote_code,
+        attn_implementation=config.models.attn_implementation,
+    )
+    target_reward_scores = reward_scorer.score_messages(
+        target_reward_messages,
+        batch_size=config.generation.reward_batch_size,
+        progress_desc="Scoring target completions",
+    )
+    for row, reward_score in zip(target_completion_rows, target_reward_scores, strict=True):
+        row["reward_score"] = float(reward_score)
 
     reward_messages = []
     for row in response_rows:
@@ -187,6 +188,7 @@ def main() -> None:
         row["reward_score"] = float(reward_score)
         keyword_metrics = count_pattern_hits(str(row.get("reasoning_trace", "")), REWARD_KEYWORD_PATTERNS)
         row.update(keyword_metrics)
+    reward_scorer.release()
 
     write_jsonl(output_dir / "responses.jsonl", response_rows)
     save_rows_csv(output_dir / "responses.csv", response_rows)

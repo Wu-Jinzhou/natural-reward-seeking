@@ -201,31 +201,37 @@ class PolicyGenerator:
         tokenizer, model = self.load()
         stop_ids = get_stop_token_ids(tokenizer)
         model_device = next(model.parameters()).device
-        results: list[dict[str, Any]] = []
+        rendered_prompts = []
+        for row in case_rows:
+            messages = build_messages(row["prompt_text"], row["system_prompt"])
+            rendered_prompts.append(
+                render_messages_to_text(
+                    tokenizer,
+                    messages,
+                    enable_thinking=self.enable_thinking,
+                    add_generation_prompt=True,
+                )
+            )
+        prompt_token_ids = tokenizer(rendered_prompts, add_special_tokens=False, truncation=False)["input_ids"]
+        sorted_indices = sorted(range(len(case_rows)), key=lambda idx: len(prompt_token_ids[idx]))
+        sorted_case_rows = [case_rows[idx] for idx in sorted_indices]
+        sorted_prompts = [rendered_prompts[idx] for idx in sorted_indices]
+        results_by_index: list[dict[str, Any] | None] = [None] * len(case_rows)
 
-        batch_starts = range(0, len(case_rows), self.batch_size)
+        batch_starts = range(0, len(sorted_case_rows), self.batch_size)
         if show_progress:
             batch_starts = tqdm(
                 batch_starts,
-                total=(len(case_rows) + self.batch_size - 1) // self.batch_size,
+                total=(len(sorted_case_rows) + self.batch_size - 1) // self.batch_size,
                 desc=progress_desc or "Generating responses",
                 unit="batch",
             )
         for start in batch_starts:
-            batch_rows = case_rows[start : start + self.batch_size]
-            prompts = []
-            for row in batch_rows:
-                messages = build_messages(row["prompt_text"], row["system_prompt"])
-                prompts.append(
-                    render_messages_to_text(
-                        tokenizer,
-                        messages,
-                        enable_thinking=self.enable_thinking,
-                        add_generation_prompt=True,
-                    )
-                )
+            batch_rows = sorted_case_rows[start : start + self.batch_size]
+            batch_prompts = sorted_prompts[start : start + self.batch_size]
+            batch_original_indices = sorted_indices[start : start + self.batch_size]
             encoded = tokenizer(
-                prompts,
+                batch_prompts,
                 return_tensors="pt",
                 padding=True,
                 truncation=True,
@@ -240,7 +246,7 @@ class PolicyGenerator:
                 pad_token_id=tokenizer.pad_token_id,
                 use_cache=True,
             )
-            for row, output_ids in zip(batch_rows, outputs, strict=True):
+            for row, original_index, output_ids in zip(batch_rows, batch_original_indices, outputs, strict=True):
                 generated_ids = output_ids[prompt_width:].tolist()
                 trimmed_ids, removed_terminal_tokens = trim_trailing_stop_ids(generated_ids, stop_ids)
                 decoded = tokenizer.decode(trimmed_ids, skip_special_tokens=False)
@@ -256,5 +262,5 @@ class PolicyGenerator:
                         "removed_terminal_tokens": removed_terminal_tokens,
                     }
                 )
-                results.append(enriched)
-        return results
+                results_by_index[original_index] = enriched
+        return [row for row in results_by_index if row is not None]

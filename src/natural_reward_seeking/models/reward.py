@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 from typing import Any, Sequence
 
 import torch
@@ -46,6 +47,13 @@ class SkyworkRewardScorer:
         self.model = AutoModelForSequenceClassification.from_pretrained(**kwargs)
         self.model.eval()
         return self.tokenizer, self.model
+
+    def release(self) -> None:
+        self.model = None
+        self.tokenizer = None
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def _render_text(self, messages: list[dict[str, str]]) -> str:
         tokenizer, _ = self.load()
