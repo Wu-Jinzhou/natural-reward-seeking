@@ -17,7 +17,13 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from natural_reward_seeking.analysis import build_summary_frames, build_target_reward_frames, count_pattern_hits, render_all_plots
+from natural_reward_seeking.analysis import (
+    build_summary_frames,
+    build_target_reward_frames,
+    count_pattern_hits,
+    is_valid_response_row,
+    render_all_plots,
+)
 from natural_reward_seeking.models import PolicyGenerator, SkyworkRewardScorer
 from natural_reward_seeking.prompting import REWARD_KEYWORD_PATTERNS
 from natural_reward_seeking.utils import save_rows_csv, write_json, write_jsonl
@@ -45,6 +51,11 @@ def parse_args() -> argparse.Namespace:
         "--response-source",
         default="responses_pre_reward.jsonl",
         help="Source response file inside output-dir to patch.",
+    )
+    parser.add_argument(
+        "--scored-response-source",
+        default="responses.jsonl",
+        help="Scored response file inside output-dir. If present with reward_score values, only rerun rows are rescored.",
     )
     parser.add_argument(
         "--target-scores-source",
@@ -133,6 +144,12 @@ def backup_artifacts(output_dir: Path) -> Path:
     return backup_dir
 
 
+def has_saved_scores(rows: list[dict[str, Any]]) -> bool:
+    if not rows:
+        return False
+    return all("reward_score" in row for row in rows)
+
+
 def select_unfinished_rows(rows: list[dict[str, Any]], *, original_max_new_tokens: int) -> list[dict[str, Any]]:
     selected: list[dict[str, Any]] = []
     for row in rows:
@@ -168,6 +185,7 @@ def main() -> None:
 
     run_config_path = output_dir / "run_config.json"
     responses_path = output_dir / args.response_source
+    scored_responses_path = output_dir / args.scored_response_source
     target_scores_path = output_dir / args.target_scores_source
     plots_dir = output_dir / "plots"
 
@@ -180,6 +198,7 @@ def main() -> None:
 
     run_config = read_json(run_config_path)
     responses_before = read_jsonl_rows(responses_path)
+    scored_rows_before = read_jsonl_rows(scored_responses_path) if scored_responses_path.exists() else []
     target_completion_rows = read_jsonl_rows(target_scores_path)
 
     original_max_new_tokens = int(run_config["generation"]["max_new_tokens"])
@@ -192,6 +211,7 @@ def main() -> None:
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "output_directory": str(output_dir),
         "original_response_source": str(responses_path),
+        "original_scored_response_source": str(scored_responses_path),
         "target_score_source": str(target_scores_path),
         "original_max_new_tokens": original_max_new_tokens,
         "rerun_max_new_tokens": int(args.max_new_tokens),
@@ -254,39 +274,90 @@ def main() -> None:
     write_jsonl(output_dir / "responses_pre_reward.jsonl", updated_pre_reward_rows)
     save_rows_csv(output_dir / "responses_pre_reward.csv", updated_pre_reward_rows)
 
-    scored_rows = deepcopy(updated_pre_reward_rows)
-    reward_messages: list[list[dict[str, str]]] = []
-    for row in scored_rows:
-        reward_text = row["answer"] if str(row.get("answer", "")).strip() else row["raw_output"]
-        row["reward_scoring_text"] = reward_text
-        reward_messages.append(
-            [
-                {"role": "user", "content": row["prompt_text"]},
-                {"role": "assistant", "content": reward_text},
-            ]
+    can_patch_existing_scores = has_saved_scores(scored_rows_before) and len(scored_rows_before) == len(updated_pre_reward_rows)
+    if can_patch_existing_scores:
+        scored_rows = deepcopy(scored_rows_before)
+        scored_by_case_id = {row["case_id"]: row for row in scored_rows}
+        scoring_target_rows: list[dict[str, Any]] = []
+        reward_messages: list[list[dict[str, str]]] = []
+        for rerun_row in rerun_rows_after:
+            merged = dict(scored_by_case_id[rerun_row["case_id"]])
+            merged.update(rerun_row)
+            reward_text = merged["answer"] if str(merged.get("answer", "")).strip() else merged["raw_output"]
+            merged["reward_scoring_text"] = reward_text
+            scoring_target_rows.append(merged)
+            reward_messages.append(
+                [
+                    {"role": "user", "content": merged["prompt_text"]},
+                    {"role": "assistant", "content": reward_text},
+                ]
+            )
+
+        reward_scorer = SkyworkRewardScorer(
+            model_id=str(run_config["models"]["reward_model_id"]),
+            trust_remote_code=bool(run_config["models"]["trust_remote_code"]),
+            attn_implementation="sdpa",
         )
+        reward_scores = reward_scorer.score_messages(
+            reward_messages,
+            batch_size=reward_batch_size,
+            progress_desc="Scoring repaired rows",
+        )
+        reward_scorer.release()
 
-    reward_scorer = SkyworkRewardScorer(
-        model_id=str(run_config["models"]["reward_model_id"]),
-        trust_remote_code=bool(run_config["models"]["trust_remote_code"]),
-        attn_implementation="sdpa",
-    )
-    reward_scores = reward_scorer.score_messages(
-        reward_messages,
-        batch_size=reward_batch_size,
-        progress_desc="Scoring repaired response table",
-    )
-    reward_scorer.release()
+        rescored_by_case_id: dict[str, dict[str, Any]] = {}
+        for row, reward_score in zip(scoring_target_rows, reward_scores, strict=True):
+            row["reward_score"] = float(reward_score)
+            row.update(count_pattern_hits(str(row.get("reasoning_trace", "")), REWARD_KEYWORD_PATTERNS))
+            rescored_by_case_id[row["case_id"]] = row
 
-    for row, reward_score in zip(scored_rows, reward_scores, strict=True):
-        row["reward_score"] = float(reward_score)
-        row.update(count_pattern_hits(str(row.get("reasoning_trace", "")), REWARD_KEYWORD_PATTERNS))
+        patched_scored_rows: list[dict[str, Any]] = []
+        for row in scored_rows:
+            patched_scored_rows.append(rescored_by_case_id.get(row["case_id"], row))
+        scored_rows = patched_scored_rows
+        scoring_mode = "partial_rescore"
+        num_rescored_rows = len(scoring_target_rows)
+    else:
+        scored_rows = deepcopy(updated_pre_reward_rows)
+        reward_messages = []
+        for row in scored_rows:
+            reward_text = row["answer"] if str(row.get("answer", "")).strip() else row["raw_output"]
+            row["reward_scoring_text"] = reward_text
+            reward_messages.append(
+                [
+                    {"role": "user", "content": row["prompt_text"]},
+                    {"role": "assistant", "content": reward_text},
+                ]
+            )
+
+        reward_scorer = SkyworkRewardScorer(
+            model_id=str(run_config["models"]["reward_model_id"]),
+            trust_remote_code=bool(run_config["models"]["trust_remote_code"]),
+            attn_implementation="sdpa",
+        )
+        reward_scores = reward_scorer.score_messages(
+            reward_messages,
+            batch_size=reward_batch_size,
+            progress_desc="Scoring repaired response table",
+        )
+        reward_scorer.release()
+
+        for row, reward_score in zip(scored_rows, reward_scores, strict=True):
+            row["reward_score"] = float(reward_score)
+            row.update(count_pattern_hits(str(row.get("reasoning_trace", "")), REWARD_KEYWORD_PATTERNS))
+        scoring_mode = "full_rescore"
+        num_rescored_rows = len(scored_rows)
 
     write_jsonl(output_dir / "responses.jsonl", scored_rows)
     save_rows_csv(output_dir / "responses.csv", scored_rows)
 
+    valid_scored_rows = [
+        row
+        for row in scored_rows
+        if is_valid_response_row(row, max_new_tokens=int(args.max_new_tokens))
+    ]
     summary_overall, summary_by_category, keyword_overall, keyword_by_category = build_summary_frames(
-        scored_rows,
+        valid_scored_rows,
         keywords=list(REWARD_KEYWORD_PATTERNS.keys()),
         bootstrap_samples=int(run_config["analysis"]["bootstrap_samples"]),
         bootstrap_seed=int(run_config["analysis"]["bootstrap_seed"]),
@@ -322,6 +393,8 @@ def main() -> None:
             "policy_batch_size": batch_size,
             "reward_batch_size": reward_batch_size,
             "num_replaced_rows": replaced_count,
+            "num_rescored_rows": num_rescored_rows,
+            "scoring_mode": scoring_mode,
             "num_still_capped_after_rerun": sum(
                 1
                 for row in rerun_rows_after

@@ -13,7 +13,13 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from natural_reward_seeking.analysis import build_summary_frames, build_target_reward_frames, count_pattern_hits, render_all_plots
+from natural_reward_seeking.analysis import (
+    build_summary_frames,
+    build_target_reward_frames,
+    count_pattern_hits,
+    is_valid_response_row,
+    render_all_plots,
+)
 from natural_reward_seeking.config import load_initial_eval_config
 from natural_reward_seeking.data import load_wildjailbreak_train_rows, sample_rows_by_category
 from natural_reward_seeking.models import PolicyGenerator, SkyworkRewardScorer
@@ -239,11 +245,19 @@ def main() -> None:
         row.update(keyword_metrics)
     reward_scorer.release()
 
+    write_jsonl(output_dir / "responses.jsonl", response_rows)
+    save_rows_csv(output_dir / "responses.csv", response_rows)
+
     write_jsonl(output_dir / "target_completion_scores.jsonl", target_completion_rows)
     save_rows_csv(output_dir / "target_completion_scores.csv", target_completion_rows)
 
+    valid_response_rows = [
+        row
+        for row in response_rows
+        if is_valid_response_row(row, max_new_tokens=config.generation.max_new_tokens)
+    ]
     summary_overall, summary_by_category, keyword_overall, keyword_by_category = build_summary_frames(
-        response_rows,
+        valid_response_rows,
         keywords=list(REWARD_KEYWORD_PATTERNS.keys()),
         bootstrap_samples=config.analysis.bootstrap_samples,
         bootstrap_seed=config.analysis.bootstrap_seed,
