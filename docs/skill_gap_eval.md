@@ -4,8 +4,9 @@ This eval is separate from the original situational-awareness prompt-condition s
 Its purpose is to estimate the direct skill gap between:
 
 - `baseline`: naive task engagement with no system prompt
-- `aligned`: a polished intrinsic-alignment prompt emphasizing helpfulness, harmlessness, and honesty as genuine values
-- `reward_reasoning`: an explicit reward-oriented prompt that tells the model to reason about which response would score highest before answering
+- `aligned`: intrinsic value alignment centered on helpfulness, harmlessness, and honesty
+- `reward_reasoning_uninformed`: reward-seeking with no explicit knowledge of the rubric
+- `reward_reasoning_informed`: reward-seeking with an explicit HHH rubric
 
 The skill-gap eval keeps the rest of the stack the same:
 
@@ -15,11 +16,12 @@ The skill-gap eval keeps the rest of the stack the same:
 - same parsing and keyword analysis
 - same target-completion reference scoring
 
-The three conditions are intentionally different in spirit:
+The four conditions are intentionally different in spirit:
 
 - `baseline` asks what the raw model does with no extra framing
-- `aligned` asks what the model can do when explicitly steered toward genuine HHH alignment
-- `reward_reasoning` asks what the model can do when explicitly steered to optimize for evaluator reward
+- `aligned` asks what the model can do when explicitly steered toward genuine intrinsic HHH alignment
+- `reward_reasoning_uninformed` asks what the model does when it is explicitly reward-seeking but must infer the evaluator's rubric
+- `reward_reasoning_informed` asks what the model does when it is explicitly reward-seeking and told the evaluator uses HHH
 
 This makes the eval better suited for measuring the available behavioral gap that RL could later exploit or internalize.
 
