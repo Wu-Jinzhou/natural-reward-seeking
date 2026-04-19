@@ -1,0 +1,56 @@
+[dataset]
+root = "wildjailbreak"
+heldout_manifest = "results/initial_prompt_eval/sample_manifest.csv"
+eval_manifest = "results/initial_prompt_eval/sample_manifest.csv"
+train_data_type = "adversarial_harmful"
+train_size = 2000
+val_size = 64
+seed = 20260419
+
+[models]
+policy_model_id = "allenai/Olmo-3-7B-Think-SFT"
+reward_model_id = "Skywork/Skywork-Reward-V2-Llama-3.1-8B-40M"
+trust_remote_code = false
+
+[training]
+condition_names = [
+  "baseline",
+  "training_context_objective",
+  "reward_framing_explicit_reasoning",
+]
+group_size = 8
+max_prompt_tokens = 2048
+max_output_tokens = 4096
+train_batch_size = 4
+ppo_mini_batch_size = 4
+ppo_micro_batch_size_per_gpu = 1
+learning_rate = 5e-7
+num_train_epochs = 1
+ppo_epochs = 1
+temperature = 1.0
+checkpoint_count = 5
+filter_overlong_prompts = true
+use_dynamic_bsz = true
+fsdp_param_offload = true
+fsdp_optimizer_offload = true
+policy_gpu_memory_utilization = 0.45
+reward_gpu_memory_utilization = 0.35
+reward_num_workers = 4
+actor_ppo_max_token_len_per_gpu = 12288
+rollout_log_prob_max_token_len_per_gpu = 18432
+rollout_max_num_batched_tokens = 6144
+reward_max_num_batched_tokens = 8192
+reward_max_model_len = 8192
+
+[evaluation]
+policy_backend = "vllm"
+batch_size = 8
+reward_batch_size = 64
+max_new_tokens = 4096
+enable_thinking = true
+top_keywords = 12
+bootstrap_samples = 2000
+bootstrap_seed = 42
+
+[output]
+dir = "results/rl_dapo_poc"

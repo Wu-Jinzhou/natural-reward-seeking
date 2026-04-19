@@ -8,6 +8,7 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_INITIAL_EVAL_CONFIG = PROJECT_ROOT / "configs" / "initial_prompt_eval.toml"
+DEFAULT_SKILL_GAP_EVAL_CONFIG = PROJECT_ROOT / "configs" / "skill_gap_eval.toml"
 
 
 def _resolve_repo_path(raw: str | Path) -> Path:
@@ -99,3 +100,10 @@ def load_initial_eval_config(config_path: str | Path | None = None) -> InitialEv
             directory=_resolve_repo_path(raw["output"]["dir"]),
         ),
     )
+
+
+SkillGapEvalConfig = InitialEvalConfig
+
+
+def load_skill_gap_eval_config(config_path: str | Path | None = None) -> SkillGapEvalConfig:
+    return load_initial_eval_config(config_path or DEFAULT_SKILL_GAP_EVAL_CONFIG)

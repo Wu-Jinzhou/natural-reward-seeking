@@ -281,6 +281,7 @@ def main() -> None:
         target_reward_by_category=target_reward_by_category,
         keyword_overall=keyword_overall,
         keyword_by_category=keyword_by_category,
+        response_rows=valid_response_rows,
         plots_dir=plots_dir,
         top_keywords=config.analysis.top_keywords,
     )
