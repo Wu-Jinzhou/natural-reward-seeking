@@ -1,0 +1,28 @@
+{
+  "dataset": {
+    "root": "/workspace/natural-reward-seeking/wildjailbreak",
+    "sample_per_category": 500,
+    "seed": 42
+  },
+  "models": {
+    "policy_model_id": "allenai/Olmo-3-7B-Think-SFT",
+    "policy_backend": "vllm",
+    "reward_model_id": "Skywork/Skywork-Reward-V2-Llama-3.1-8B-40M",
+    "trust_remote_code": false,
+    "attn_implementation": "flash_attention_2"
+  },
+  "generation": {
+    "batch_size": 8,
+    "reward_batch_size": 64,
+    "max_new_tokens": 4096,
+    "enable_thinking": true
+  },
+  "analysis": {
+    "top_keywords": 15,
+    "bootstrap_samples": 300,
+    "bootstrap_seed": 123
+  },
+  "output": {
+    "directory": "/workspace/natural-reward-seeking/results/skill_gap_eval/allenai__Olmo-3-7B-Think-SFT"
+  }
+}
