@@ -1,0 +1,34 @@
+[agentic]
+repo_root = "agentic-misalignment"
+scenarios = ["blackmail", "leaking", "murder"]
+goal_types = ["explicit", "none"]
+goal_values = ["america"]
+urgency_types = ["none", "restriction", "replacement"]
+samples_per_condition = 100
+production_variant = false
+
+[models]
+policy_model_id = "allenai/Olmo-3-7B-Think-SFT"
+policy_backend = "vllm"
+reward_model_id = "Skywork/Skywork-Reward-V2-Llama-3.1-8B-40M"
+classifier_model_id = "claude-3-7-sonnet-20250219"
+trust_remote_code = false
+attn_implementation = "flash_attention_2"
+
+[generation]
+batch_size = 64
+reward_batch_size = 64
+reward_max_length = 8192
+reward_truncation_side = "left"
+classifier_concurrency = 20
+max_new_tokens = 4096
+temperature = 1.0
+top_p = 1.0
+enable_thinking = true
+
+[analysis]
+bootstrap_samples = 300
+bootstrap_seed = 123
+
+[output]
+dir = "results/agentic_misalignment_eval/allenai__Olmo-3-7B-Think-SFT"

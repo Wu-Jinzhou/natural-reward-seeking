@@ -148,6 +148,8 @@ class PolicyGenerator:
         enable_thinking: bool,
         attn_implementation: str,
         trust_remote_code: bool,
+        temperature: float = 0.0,
+        top_p: float = 1.0,
     ) -> None:
         self.model_id = model_id
         self.backend = backend
@@ -156,6 +158,8 @@ class PolicyGenerator:
         self.enable_thinking = enable_thinking
         self.attn_implementation = attn_implementation
         self.trust_remote_code = trust_remote_code
+        self.temperature = float(temperature)
+        self.top_p = float(top_p)
         self.tokenizer = None
         self.model = None
 
@@ -244,8 +248,8 @@ class PolicyGenerator:
                 ) from exc
             sampling_params = SamplingParams(
                 n=1,
-                temperature=0.0,
-                top_p=1.0,
+                temperature=self.temperature,
+                top_p=self.top_p,
                 max_tokens=self.max_new_tokens,
                 stop_token_ids=(stop_ids or None),
             )
@@ -302,14 +306,17 @@ class PolicyGenerator:
             )
             encoded = {key: value.to(model_device) for key, value in encoded.items()}
             prompt_width = int(encoded["input_ids"].shape[1])
-            outputs = model.generate(
-                **encoded,
-                max_new_tokens=self.max_new_tokens,
-                do_sample=False,
-                eos_token_id=(stop_ids or None),
-                pad_token_id=tokenizer.pad_token_id,
-                use_cache=True,
-            )
+            generation_kwargs: dict[str, Any] = {
+                "max_new_tokens": self.max_new_tokens,
+                "do_sample": self.temperature > 0.0,
+                "eos_token_id": (stop_ids or None),
+                "pad_token_id": tokenizer.pad_token_id,
+                "use_cache": True,
+            }
+            if self.temperature > 0.0:
+                generation_kwargs["temperature"] = self.temperature
+                generation_kwargs["top_p"] = self.top_p
+            outputs = model.generate(**encoded, **generation_kwargs)
             for row, original_index, output_ids in zip(batch_rows, batch_original_indices, outputs, strict=True):
                 generated_ids = output_ids[prompt_width:].tolist()
                 trimmed_ids, removed_terminal_tokens = trim_trailing_stop_ids(generated_ids, stop_ids)

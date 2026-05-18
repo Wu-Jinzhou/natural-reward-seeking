@@ -16,11 +16,13 @@ class SkyworkRewardScorer:
         trust_remote_code: bool = False,
         attn_implementation: str = "auto",
         max_length: int = 4096,
+        truncation_side: str | None = None,
     ) -> None:
         self.model_id = model_id
         self.trust_remote_code = trust_remote_code
         self.attn_implementation = attn_implementation
         self.max_length = max_length
+        self.truncation_side = truncation_side
         self.tokenizer = None
         self.model = None
 
@@ -35,6 +37,8 @@ class SkyworkRewardScorer:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token or self.tokenizer.unk_token
         self.tokenizer.padding_side = "right"
+        if self.truncation_side is not None:
+            self.tokenizer.truncation_side = self.truncation_side
         kwargs: dict[str, Any] = {
             "pretrained_model_name_or_path": self.model_id,
             "trust_remote_code": self.trust_remote_code,
