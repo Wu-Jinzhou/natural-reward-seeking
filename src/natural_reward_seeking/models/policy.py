@@ -187,7 +187,7 @@ class PolicyGenerator:
                 "tokenizer": self.model_id,
                 "trust_remote_code": self.trust_remote_code,
                 "dtype": "bfloat16",
-                "gpu_memory_utilization": 0.98,
+                "gpu_memory_utilization": 0.90,
             }
             self.model = LLM(**llm_kwargs)
             return self.tokenizer, self.model
